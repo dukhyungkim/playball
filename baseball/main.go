@@ -20,9 +20,7 @@ func main() {
 	fmt.Println("정답:", randNum)
 	fmt.Println()
 
-	fmt.Print("기회: ")
-	var chance int
-	_, err := fmt.Scan(&chance)
+	chance, err := getChance()
 	if err != nil {
 		log.Println("숫자가 아님")
 		return
@@ -91,4 +89,14 @@ func makeRandomNumber() string {
 	}
 	randNum := randNumBuilder.String()
 	return randNum
+}
+
+func getChance() (int, error) {
+	fmt.Print("기회: ")
+	var chance int
+	_, err := fmt.Scan(&chance)
+	if err != nil {
+		return 0, err
+	}
+	return chance, nil
 }
