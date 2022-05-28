@@ -13,10 +13,10 @@ func init() {
 	rand.Seed(time.Now().Unix())
 }
 
-const length = 4
-
 func main() {
-	randNum := makeRandomNumber()
+	const length = 4
+
+	randNum := makeRandomNumber(length)
 	fmt.Println("정답:", randNum)
 	fmt.Println()
 
@@ -79,7 +79,7 @@ func main() {
 	}
 }
 
-func makeRandomNumber() string {
+func makeRandomNumber(length int) string {
 	var nums = "0123456789"
 	var randNumBuilder strings.Builder
 	for i := 0; i < length; i++ {
