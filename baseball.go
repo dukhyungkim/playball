@@ -6,14 +6,9 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
-	"time"
 )
 
-func init() {
-	rand.Seed(time.Now().Unix())
-}
-
-func main() {
+func play() {
 	const length = 4
 
 	randNum := makeRandomNumber(length)
