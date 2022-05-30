@@ -2,76 +2,67 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"math/rand"
-	"strconv"
 	"strings"
 )
 
-func play() {
-	const length = 4
+type BaseBall struct {
+	answer string
+	length int
+}
 
-	randNum := makeRandomNumber(length)
-	fmt.Println("정답:", randNum)
-	fmt.Println()
+func NewBaseBall(length int) *BaseBall {
+	return &BaseBall{
+		answer: makeRandomNumber(length),
+		length: length,
+	}
+}
 
-	chance, err := getChance()
-	if err != nil {
-		log.Println("숫자가 아님")
-		return
+type Result struct {
+	Win    bool `json:"win"`
+	Out    bool `json:"out"`
+	Strike int  `json:"strike"`
+	Ball   int  `json:"ball"`
+}
+
+func (b *BaseBall) compareToAnswer(number int) (*Result, error) {
+	var (
+		strike = 0
+		ball   = 0
+	)
+
+	guessed := fmt.Sprint(number)
+	if len(guessed) != b.length {
+		return nil, ErrLengthMismatched
 	}
 
-	for i := 0; i < chance; i++ {
-		fmt.Print("숫자 입력: ")
-		var num string
-		_, err = fmt.Scan(&num)
-		if err != nil {
-			log.Println("입력이 제대로 되지 않았음")
-			return
-		}
+	if guessed == b.answer {
+		return &Result{Win: true}, nil
+	}
 
-		_, err = strconv.ParseInt(num, 10, 64)
-		if err != nil {
-			log.Println("숫자가 아님")
-			return
-		}
+	for m := range guessed {
+		for n := range b.answer {
+			if guessed[m] == b.answer[n] && m == n {
+				strike++
+				break
+			}
 
-		if len(num) != length {
-			log.Printf("%d 자리 숫자 입력해야됨\n", length)
-			continue
-		}
-
-		var (
-			strike = 0
-			ball   = 0
-		)
-
-		for m := range num {
-			for n := range randNum {
-				if num[m] == randNum[n] && m == n {
-					strike++
-					break
-				}
-
-				if num[m] == randNum[n] {
-					ball++
-					break
-				}
+			if guessed[m] == b.answer[n] {
+				ball++
+				break
 			}
 		}
-
-		if strike == 0 && ball == 0 {
-			fmt.Println("out")
-			continue
-		} else {
-			fmt.Printf("strike: %d, ball: %d\n", strike, ball)
-		}
-
-		if strike == len(randNum) {
-			fmt.Println("you win!")
-			break
-		}
 	}
+
+	result := Result{}
+	if strike == 0 && ball == 0 {
+		result.Out = true
+	} else {
+		result.Strike = strike
+		result.Ball = ball
+	}
+
+	return &result, nil
 }
 
 func makeRandomNumber(length int) string {
@@ -84,14 +75,4 @@ func makeRandomNumber(length int) string {
 	}
 	randNum := randNumBuilder.String()
 	return randNum
-}
-
-func getChance() (int, error) {
-	fmt.Print("기회: ")
-	var chance int
-	_, err := fmt.Scan(&chance)
-	if err != nil {
-		return 0, err
-	}
-	return chance, nil
 }

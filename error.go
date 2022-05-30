@@ -10,5 +10,6 @@ var (
 
 	ErrDuplicateName = errors.New("name cannot be duplicated")
 
-	ErrGameStarted = errors.New("game is already started")
+	ErrGameStarted      = errors.New("game is already started")
+	ErrLengthMismatched = errors.New("length mismatched")
 )
