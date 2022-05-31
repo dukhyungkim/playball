@@ -16,7 +16,8 @@ type Game struct {
 	joinTicker *time.Ticker
 	joinChan   chan *Player
 	startChan  chan bool
-	isStated   bool
+	finishChan chan bool
+	isPlaying  bool
 }
 
 func NewGame() *Game {
@@ -24,17 +25,19 @@ func NewGame() *Game {
 		players:    make(map[string]*Player),
 		joinChan:   make(chan *Player, 1),
 		startChan:  make(chan bool, 1),
+		finishChan: make(chan bool, 1),
 		joinTicker: time.NewTicker(time.Second),
 	}
 
 	g.joinTicker.Stop()
 	go g.joinManager()
 	go g.startManager()
+	go g.finishManager()
 	return g
 }
 
 func (g *Game) JoinPlayer(req *JoinRequest) error {
-	if g.isStated {
+	if g.isPlaying {
 		return ErrGameStarted
 	}
 
@@ -59,7 +62,7 @@ func (g *Game) joinManager() {
 	for {
 		select {
 		case <-g.joinChan:
-			log.Println("reset join ticker")
+			log.Println("start to wait new player")
 			g.joinTicker.Reset(time.Second)
 			counter = waitCounter
 		case <-g.joinTicker.C:
@@ -75,11 +78,14 @@ func (g *Game) joinManager() {
 }
 
 func (g *Game) startManager() {
-	<-g.startChan
-	log.Println("start new game")
-	g.isStated = true
-	g.Start()
-	g.isStated = false
+	for {
+		<-g.startChan
+		log.Println("start new game")
+		g.isPlaying = true
+		g.Start()
+		log.Println("finish game")
+		g.finishChan <- true
+	}
 }
 
 func (g *Game) Start() {
@@ -203,6 +209,15 @@ func (g *Game) notifyResults(p *Player, results []*ResultInfo) error {
 		}
 	}()
 	return nil
+}
+
+func (g *Game) finishManager() {
+	for {
+		<-g.finishChan
+		log.Println("handle finish")
+		g.isPlaying = false
+		g.players = make(map[string]*Player)
+	}
 }
 
 func sendPost(url string, data io.Reader) (*http.Response, error) {
