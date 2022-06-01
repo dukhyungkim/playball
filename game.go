@@ -61,8 +61,8 @@ func (g *Game) joinManager() {
 
 	for {
 		select {
-		case <-g.joinChan:
-			log.Println("start to wait new player")
+		case p := <-g.joinChan:
+			log.Printf("new player %s joined\n", p.Name)
 			g.joinTicker.Reset(time.Second)
 			counter = waitCounter
 		case <-g.joinTicker.C:
@@ -88,10 +88,16 @@ func (g *Game) startManager() {
 	}
 }
 
+type PlayerGuess struct {
+	Name   string
+	Number string
+}
+
 func (g *Game) Start() {
 	baseball := NewBaseBall(4)
 	log.Println("random number generated", baseball.answer)
-	counter := 10
+	//counter := 10
+	counter := 1
 	for range time.NewTicker(time.Second).C {
 		log.Printf("wait for %d sec to request guessing\n", counter)
 		counter--
@@ -100,13 +106,9 @@ func (g *Game) Start() {
 		}
 	}
 
-	countOfPlayers := len(g.players)
-	players := make([]*Player, 0, countOfPlayers)
-	for _, player := range g.players {
-		players = append(players, player)
-	}
+	players := g.getPlayers()
 
-	guessNumbers := make([]int, countOfPlayers)
+	playerGuesses := make([]*PlayerGuess, len(players))
 	wg := sync.WaitGroup{}
 	for i, player := range players {
 		wg.Add(1)
@@ -116,31 +118,36 @@ func (g *Game) Start() {
 			if err != nil {
 				log.Println(err)
 			}
-			guessNumbers[idx] = guessed
+			playerGuesses[idx] = &PlayerGuess{
+				Name:   p.Name,
+				Number: guessed,
+			}
+			log.Printf("player: %s, guessed number: %s\n", p.Name, guessed)
 		}(i, player)
 	}
 	wg.Wait()
 
-	result, err := baseball.compareToAnswer(guessNumbers[0])
-	if err != nil {
-		log.Println(err)
-		return
+	resultInfos := make([]*ResultInfo, len(players))
+	for i, playerGuess := range playerGuesses {
+		result, err := baseball.compareToAnswer(playerGuess.Number)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		resultInfos[i] = &ResultInfo{
+			Name:   playerGuess.Name,
+			Number: playerGuess.Number,
+			Result: result,
+		}
+		log.Printf("user %s, guessed: %s, result: %+v\n", playerGuess.Name, playerGuess.Number, result)
 	}
-	log.Printf("guessed: %d, result: %+v\n", guessNumbers[0], result)
 
 	for _, player := range players {
 		wg.Add(1)
 		go func(p *Player) {
 			defer wg.Done()
 			log.Printf("notifing results to %s\n", p.Name)
-			resultInfo := []*ResultInfo{
-				{
-					Name:   p.Name,
-					Number: guessNumbers[0],
-					Result: result,
-				},
-			}
-			err = g.notifyResults(p, resultInfo)
+			err := g.notifyResults(p, resultInfos)
 			if err != nil {
 				log.Println(err)
 			}
@@ -159,10 +166,10 @@ type GuessRequest struct {
 }
 
 type GuessResponse struct {
-	Number int `json:"number"`
+	Number string `json:"number"`
 }
 
-func (g *Game) requestGuessing(p *Player) (int, error) {
+func (g *Game) requestGuessing(p *Player) (string, error) {
 	guessReq := GuessRequest{
 		Length:       4,
 		RemainChance: p.RemainChance,
@@ -172,7 +179,7 @@ func (g *Game) requestGuessing(p *Player) (int, error) {
 
 	resp, err := sendPost(p.Address.String()+"/guess", bytes.NewBuffer(b))
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	defer func() {
 		if err = resp.Body.Close(); err != nil {
@@ -180,18 +187,22 @@ func (g *Game) requestGuessing(p *Player) (int, error) {
 		}
 	}()
 
-	var guessResp GuessResponse
-	err = json.NewDecoder(resp.Body).Decode(&guessResp)
-	if err != nil {
-		return 0, err
+	b, err = io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("statusCode: %d, body: %s\n", resp.StatusCode, string(b))
 	}
-	log.Println(guessResp)
+
+	var guessResp GuessResponse
+	err = json.Unmarshal(b, &guessResp)
+	if err != nil {
+		return "", err
+	}
 	return guessResp.Number, nil
 }
 
 type ResultInfo struct {
 	Name   string  `json:"name"`
-	Number int     `json:"number"`
+	Number string  `json:"number"`
 	Result *Result `json:"result"`
 }
 
@@ -220,6 +231,15 @@ func (g *Game) finishManager() {
 	}
 }
 
+func (g *Game) getPlayers() []*Player {
+	countOfPlayers := len(g.players)
+	players := make([]*Player, 0, countOfPlayers)
+	for _, player := range g.players {
+		players = append(players, player)
+	}
+	return players
+}
+
 func sendPost(url string, data io.Reader) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -227,5 +247,6 @@ func sendPost(url string, data io.Reader) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	return http.DefaultClient.Do(req)
 }

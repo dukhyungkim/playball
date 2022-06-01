@@ -58,7 +58,7 @@ func setupRouter(g *Game) *gin.Engine {
 			return
 		}
 
-		c.JSON(http.StatusOK, JoinResponse{Message: fmt.Sprintf("user %s has been joined the game", joinReq.Name)})
+		c.JSON(http.StatusOK, JoinResponse{Message: fmt.Sprintf("you have joined the game as %s", joinReq.Name)})
 	})
 
 	return r

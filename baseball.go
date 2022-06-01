@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"strings"
 )
@@ -25,13 +24,12 @@ type Result struct {
 	Ball   int  `json:"ball"`
 }
 
-func (b *BaseBall) compareToAnswer(number int) (*Result, error) {
+func (b *BaseBall) compareToAnswer(guessed string) (*Result, error) {
 	var (
 		strike = 0
 		ball   = 0
 	)
 
-	guessed := fmt.Sprint(number)
 	if len(guessed) != b.length {
 		return nil, ErrLengthMismatched
 	}
