@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	WIN   = "승리"
+	LOOSE = "패배"
+)
+
 type Game struct {
 	players    map[string]*Player
 	joinTicker *time.Ticker
@@ -65,6 +70,7 @@ func (g *Game) joinManager() {
 			log.Printf("new player %s joined\n", p.Name)
 			g.joinTicker.Reset(time.Second)
 			counter = waitCounter
+
 		case <-g.joinTicker.C:
 			log.Printf("counter: %d\n", counter)
 			counter--
@@ -82,7 +88,20 @@ func (g *Game) startManager() {
 		<-g.startChan
 		log.Println("start new game")
 		g.isPlaying = true
-		g.Start()
+
+		baseball := NewBaseBall(4)
+		log.Println("random number generated", baseball.answer)
+
+		for baseball.remainChance > 0 {
+			for counter := 10; counter > 0; counter-- {
+				log.Printf("wait for %d sec to request guessing\n", counter)
+				time.Sleep(time.Second)
+			}
+
+			g.PlayRound(baseball)
+			baseball.remainChance--
+		}
+
 		log.Println("finish game")
 		g.finishChan <- true
 	}
@@ -93,19 +112,7 @@ type PlayerGuess struct {
 	Number string
 }
 
-func (g *Game) Start() {
-	baseball := NewBaseBall(4)
-	log.Println("random number generated", baseball.answer)
-	//counter := 10
-	counter := 1
-	for range time.NewTicker(time.Second).C {
-		log.Printf("wait for %d sec to request guessing\n", counter)
-		counter--
-		if counter == 0 {
-			break
-		}
-	}
-
+func (g *Game) PlayRound(baseball *BaseBall) {
 	players := g.getPlayers()
 
 	playerGuesses := make([]*PlayerGuess, len(players))
@@ -114,7 +121,7 @@ func (g *Game) Start() {
 		wg.Add(1)
 		go func(idx int, p *Player) {
 			defer wg.Done()
-			guessed, err := g.requestGuessing(p)
+			guessed, err := g.requestGuessing(p, baseball.remainChance)
 			if err != nil {
 				log.Println(err)
 			}
@@ -129,6 +136,10 @@ func (g *Game) Start() {
 
 	resultInfos := make([]*ResultInfo, len(players))
 	for i, playerGuess := range playerGuesses {
+		if playerGuess == nil {
+			log.Printf("player %s failed to guess\n", players[i].Name)
+			continue
+		}
 		result, err := baseball.compareToAnswer(playerGuess.Number)
 		if err != nil {
 			log.Println(err)
@@ -139,7 +150,7 @@ func (g *Game) Start() {
 			Number: playerGuess.Number,
 			Result: result,
 		}
-		log.Printf("user %s, guessed: %s, result: %+v\n", playerGuess.Name, playerGuess.Number, result)
+		log.Printf("player %s, guessed: %s, result: %+v\n", playerGuess.Name, playerGuess.Number, result)
 	}
 
 	for _, player := range players {
@@ -156,10 +167,6 @@ func (g *Game) Start() {
 	wg.Wait()
 }
 
-func (g *Game) Guess() {
-
-}
-
 type GuessRequest struct {
 	Length       int `json:"length"`
 	RemainChance int `json:"remain_chance"`
@@ -169,10 +176,10 @@ type GuessResponse struct {
 	Number string `json:"number"`
 }
 
-func (g *Game) requestGuessing(p *Player) (string, error) {
+func (g *Game) requestGuessing(p *Player, remainChance int) (string, error) {
 	guessReq := GuessRequest{
 		Length:       4,
-		RemainChance: p.RemainChance,
+		RemainChance: remainChance,
 	}
 
 	b, _ := json.Marshal(guessReq)
@@ -220,6 +227,13 @@ func (g *Game) notifyResults(p *Player, results []*ResultInfo) error {
 		}
 	}()
 	return nil
+}
+
+type FinishRequest struct {
+	Name       string `json:"name"`
+	Answer     string `json:"answer"`
+	UsedChance int    `json:"used_chance"`
+	Result     string `json:"result"`
 }
 
 func (g *Game) finishManager() {

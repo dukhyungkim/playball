@@ -6,14 +6,16 @@ import (
 )
 
 type BaseBall struct {
-	answer string
-	length int
+	answer       string
+	length       int
+	remainChance int
 }
 
 func NewBaseBall(length int) *BaseBall {
 	return &BaseBall{
-		answer: makeRandomNumber(length),
-		length: length,
+		answer:       makeRandomNumber(length),
+		length:       length,
+		remainChance: 5,
 	}
 }
 

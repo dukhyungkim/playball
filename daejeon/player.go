@@ -6,9 +6,9 @@ import (
 )
 
 type Player struct {
-	Name         string
-	Address      *url.URL
-	RemainChance int
+	Name    string
+	Address *url.URL
+	Result  string
 }
 
 func NewPlayer(req *JoinRequest) (*Player, error) {
@@ -31,8 +31,7 @@ func NewPlayer(req *JoinRequest) (*Player, error) {
 	}
 
 	return &Player{
-		Name:         req.Name,
-		Address:      parsedURL,
-		RemainChance: 5,
+		Name:    req.Name,
+		Address: parsedURL,
 	}, nil
 }
