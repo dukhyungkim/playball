@@ -11,9 +11,14 @@ import (
 	"time"
 )
 
-const (
-	WIN   = "승리"
-	LOOSE = "패배"
+type WinLoose struct {
+	Result  string
+	Message string
+}
+
+var (
+	Win   = WinLoose{"Win", "you are winner in this game"}
+	Loose = WinLoose{"Loose", "you don't win this game"}
 )
 
 type Game struct {
@@ -21,7 +26,7 @@ type Game struct {
 	joinTicker *time.Ticker
 	joinChan   chan *Player
 	startChan  chan bool
-	finishChan chan bool
+	finishChan chan []*FinishInfo
 	isPlaying  bool
 }
 
@@ -30,7 +35,7 @@ func NewGame() *Game {
 		players:    make(map[string]*Player),
 		joinChan:   make(chan *Player, 1),
 		startChan:  make(chan bool, 1),
-		finishChan: make(chan bool, 1),
+		finishChan: make(chan []*FinishInfo, 1),
 		joinTicker: time.NewTicker(time.Second),
 	}
 
@@ -67,7 +72,7 @@ func (g *Game) joinManager() {
 	for {
 		select {
 		case p := <-g.joinChan:
-			log.Printf("new player %s joined\n", p.Name)
+			log.Printf("new player \"%s\" joined\n", p.Name)
 			g.joinTicker.Reset(time.Second)
 			counter = waitCounter
 
@@ -86,25 +91,58 @@ func (g *Game) joinManager() {
 func (g *Game) startManager() {
 	for {
 		<-g.startChan
-		log.Println("start new game")
+		log.Println("start a new game")
 		g.isPlaying = true
 
-		baseball := NewBaseBall(4)
+		const length = 4
+		const chance = 5
+		baseball := NewBaseBall(length, chance)
 		log.Println("random number generated", baseball.answer)
 
+		var finishInfos []*FinishInfo
+		var hasWinner bool
 		for baseball.remainChance > 0 {
 			for counter := 10; counter > 0; counter-- {
 				log.Printf("wait for %d sec to request guessing\n", counter)
 				time.Sleep(time.Second)
 			}
 
-			g.PlayRound(baseball)
 			baseball.remainChance--
+			finishInfos, hasWinner = g.PlayRound(baseball)
+			if hasWinner {
+				log.Println("finish game because of winner")
+				break
+			}
 		}
 
-		log.Println("finish game")
-		g.finishChan <- true
+		if !hasWinner {
+			log.Println("finish game")
+		}
+		g.finishChan <- finishInfos
 	}
+}
+
+func (g *Game) finishManager() {
+	for {
+		finishInfos := <-g.finishChan
+		for _, info := range finishInfos {
+			go g.sendFinish(info)
+		}
+		log.Println("the game has been finished")
+		g.resetPlayInfo()
+	}
+}
+
+type FinishInfo struct {
+	player     *Player
+	answer     string
+	usedChance int
+	winLoose   WinLoose
+}
+
+func (g *Game) resetPlayInfo() {
+	g.isPlaying = false
+	g.players = make(map[string]*Player)
 }
 
 type PlayerGuess struct {
@@ -112,7 +150,7 @@ type PlayerGuess struct {
 	Number string
 }
 
-func (g *Game) PlayRound(baseball *BaseBall) {
+func (g *Game) PlayRound(baseball *BaseBall) ([]*FinishInfo, bool) {
 	players := g.getPlayers()
 
 	playerGuesses := make([]*PlayerGuess, len(players))
@@ -124,6 +162,7 @@ func (g *Game) PlayRound(baseball *BaseBall) {
 			guessed, err := g.requestGuessing(p, baseball.remainChance)
 			if err != nil {
 				log.Println(err)
+				return
 			}
 			playerGuesses[idx] = &PlayerGuess{
 				Name:   p.Name,
@@ -143,7 +182,7 @@ func (g *Game) PlayRound(baseball *BaseBall) {
 		result, err := baseball.compareToAnswer(playerGuess.Number)
 		if err != nil {
 			log.Println(err)
-			return
+			return nil, false
 		}
 		resultInfos[i] = &ResultInfo{
 			Name:   playerGuess.Name,
@@ -161,10 +200,29 @@ func (g *Game) PlayRound(baseball *BaseBall) {
 			err := g.notifyResults(p, resultInfos)
 			if err != nil {
 				log.Println(err)
+				return
 			}
 		}(player)
 	}
 	wg.Wait()
+
+	finInfos := make([]*FinishInfo, len(resultInfos))
+	var hasWinner bool
+	for i, info := range resultInfos {
+		winLoose := Loose
+		if info.Result.Win {
+			hasWinner = true
+			winLoose = Win
+		}
+		finInfos[i] = &FinishInfo{
+			player:     g.players[info.Name],
+			answer:     baseball.answer,
+			usedChance: baseball.usedChance(),
+			winLoose:   winLoose,
+		}
+	}
+
+	return finInfos, hasWinner
 }
 
 type GuessRequest struct {
@@ -234,15 +292,30 @@ type FinishRequest struct {
 	Answer     string `json:"answer"`
 	UsedChance int    `json:"used_chance"`
 	Result     string `json:"result"`
+	Message    string `json:"message"`
 }
 
-func (g *Game) finishManager() {
-	for {
-		<-g.finishChan
-		log.Println("handle finish")
-		g.isPlaying = false
-		g.players = make(map[string]*Player)
+func (g *Game) sendFinish(finInfo *FinishInfo) {
+	finReq := FinishRequest{
+		Name:       finInfo.player.Name,
+		Answer:     finInfo.answer,
+		UsedChance: finInfo.usedChance,
+		Result:     finInfo.winLoose.Result,
+		Message:    finInfo.winLoose.Message,
 	}
+	b, _ := json.Marshal(finReq)
+	log.Println(string(b))
+
+	resp, err := sendPost(finInfo.player.Address.String()+"/finish", bytes.NewBuffer(b))
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 }
 
 func (g *Game) getPlayers() []*Player {

@@ -8,14 +8,16 @@ import (
 type BaseBall struct {
 	answer       string
 	length       int
+	maxChance    int
 	remainChance int
 }
 
-func NewBaseBall(length int) *BaseBall {
+func NewBaseBall(length, chance int) *BaseBall {
 	return &BaseBall{
 		answer:       makeRandomNumber(length),
 		length:       length,
-		remainChance: 5,
+		maxChance:    chance,
+		remainChance: chance,
 	}
 }
 
@@ -63,6 +65,10 @@ func (b *BaseBall) compareToAnswer(guessed string) (*Result, error) {
 	}
 
 	return &result, nil
+}
+
+func (b *BaseBall) usedChance() int {
+	return b.maxChance - b.remainChance
 }
 
 func makeRandomNumber(length int) string {
