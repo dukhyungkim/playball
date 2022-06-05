@@ -36,6 +36,9 @@ const (
 func main() {
 	opts, err := ParseFlags()
 	if err != nil {
+		if flags.WroteHelp(err) {
+			return
+		}
 		log.Fatalln(err)
 	}
 
