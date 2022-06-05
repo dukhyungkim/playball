@@ -22,6 +22,7 @@ var (
 )
 
 type Game struct {
+	opts       *Options
 	players    map[string]*Player
 	joinTicker *time.Ticker
 	joinChan   chan *Player
@@ -30,8 +31,9 @@ type Game struct {
 	isPlaying  bool
 }
 
-func NewGame() *Game {
+func NewGame(opts *Options) *Game {
 	g := &Game{
+		opts:       opts,
 		players:    make(map[string]*Player),
 		joinChan:   make(chan *Player, 1),
 		startChan:  make(chan bool, 1),
@@ -66,15 +68,14 @@ func (g *Game) JoinPlayer(req *JoinRequest) error {
 }
 
 func (g *Game) joinManager() {
-	const waitCounter = 10
-	counter := waitCounter
+	counter := g.opts.WaitCountJoin
 
 	for {
 		select {
 		case p := <-g.joinChan:
 			log.Printf("new player \"%s\" joined\n", p.Name)
 			g.joinTicker.Reset(time.Second)
-			counter = waitCounter
+			counter = g.opts.WaitCountJoin
 
 		case <-g.joinTicker.C:
 			log.Printf("counter: %d\n", counter)
@@ -94,15 +95,13 @@ func (g *Game) startManager() {
 		log.Println("start a new game")
 		g.isPlaying = true
 
-		const length = 4
-		const chance = 5
-		baseball := NewBaseBall(length, chance)
+		baseball := NewBaseBall(g.opts.Length, g.opts.Chance)
 		log.Println("random number generated", baseball.answer)
 
 		var finishInfos []*FinishInfo
 		var hasWinner bool
 		for baseball.remainChance > 0 {
-			for counter := 10; counter > 0; counter-- {
+			for counter := g.opts.WaitCountGuess; counter > 0; counter-- {
 				log.Printf("wait for %d sec to request guessing\n", counter)
 				time.Sleep(time.Second)
 			}

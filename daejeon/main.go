@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jessevdk/go-flags"
 )
 
 func init() {
@@ -15,10 +16,17 @@ func init() {
 }
 
 func main() {
-	g := NewGame()
+	opts, err := ParseFlags()
+	if err != nil {
+		if flags.WroteHelp(err) {
+			return
+		}
+		log.Panicln(err)
+	}
+	g := NewGame(opts)
 	r := setupRouter(g)
 
-	err := r.Run()
+	err = r.Run()
 	if err != nil {
 		log.Panicln(err)
 	}
