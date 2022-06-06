@@ -50,6 +50,10 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	err = testPlayRequestAgain(opts.Host, player)
+	if err != nil {
+		log.Fatalln(err)
+	}
 	startTime := playResponse.StartTime
 
 	var result string
@@ -107,7 +111,7 @@ func sendPlayRequest(host string, player Player) (*PlayResponse, error) {
 	b, err = io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("statusCode: %d, body: %s\n", resp.StatusCode, string(b))
-		return nil, errors.New("unexpected status code")
+		return nil, ErrUnexpectedStatusCode
 	}
 
 	var playResp PlayResponse
@@ -118,6 +122,32 @@ func sendPlayRequest(host string, player Player) (*PlayResponse, error) {
 
 	log.Printf("%s -> response body:  %s\n", playURI, string(b))
 	return &playResp, nil
+}
+
+func testPlayRequestAgain(host string, player Player) error {
+	const playURI = "/play"
+
+	b, _ := json.Marshal(PlayRequest{Name: player.Name})
+	log.Printf("%s -> request body: %s\n", playURI, string(b))
+
+	resp, err := sendRequest(host+playURI, http.MethodPost, bytes.NewBuffer(b))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err = resp.Body.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	b, err = io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusNotAcceptable {
+		log.Printf("statusCode: %d, body: %s\n", resp.StatusCode, string(b))
+		return ErrUnexpectedStatusCode
+	}
+
+	log.Printf("%s -> response body:  %s\n", playURI, string(b))
+	return nil
 }
 
 func sendGuessRequest(host, number string) (*GuessNotFinishResponse, *GuessFinishResponse, error) {
