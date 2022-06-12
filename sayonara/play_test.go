@@ -69,6 +69,19 @@ func Test_sendPlayRequest(t *testing.T) {
 }
 
 func Test_testPlayRequestAgain(t *testing.T) {
+	name := fake.LastName()
+	want := map[string]string{"message": "already playing"}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		b, _ := json.Marshal(want)
+		w.WriteHeader(http.StatusNotAcceptable)
+		if _, err := w.Write(b); err != nil {
+			log.Println(err)
+			return
+		}
+	}))
+	defer server.Close()
+
 	type args struct {
 		host   string
 		player Player
@@ -78,7 +91,14 @@ func Test_testPlayRequestAgain(t *testing.T) {
 		args    args
 		wantErr assert.ErrorAssertionFunc
 	}{
-		// TODO: Add test cases.
+		{
+			name: "return 406",
+			args: args{
+				host:   server.URL,
+				player: Player{Name: name},
+			},
+			wantErr: assert.NoError,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
