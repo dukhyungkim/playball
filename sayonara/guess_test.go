@@ -9,26 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_sendGuessRequest(t *testing.T) {
-	number := makeRandomNumber(rand.Intn(10))
-	want := &GuessNotFinishResponse{
-		Number: number,
-		Result: struct {
-			Out    bool `json:"out"`
-			Strike int  `json:"strike"`
-			Ball   int  `json:"ball"`
-		}{
-			Out:    false,
-			Strike: 1,
-			Ball:   2,
-		},
-		RemainChance: 5,
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+func makeServer(resp interface{}, statusCode int) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		all, err := ioutil.ReadAll(req.Body)
 		if err != nil {
 			log.Println(err)
@@ -49,12 +36,40 @@ func Test_sendGuessRequest(t *testing.T) {
 			return
 		}
 
-		b, _ := json.Marshal(want)
+		b, _ := json.Marshal(resp)
+		w.WriteHeader(statusCode)
 		if _, err = w.Write(b); err != nil {
 			log.Println(err)
 			return
 		}
 	}))
+}
+
+func Test_sendGuessRequest(t *testing.T) {
+	number := makeRandomNumber(rand.Intn(10))
+
+	successNotEnd := &GuessNotFinishResponse{
+		Number: number,
+		Result: struct {
+			Out    bool `json:"out"`
+			Strike int  `json:"strike"`
+			Ball   int  `json:"ball"`
+		}{
+			Out:    false,
+			Strike: 1,
+			Ball:   2,
+		},
+		RemainChance: 5,
+	}
+	successNotEndServer := makeServer(successNotEnd, http.StatusOK)
+
+	successEnd := &GuessFinishResponse{
+		FinishTime: time.Time{},
+		UsedChance: 5,
+		Answer:     number,
+		Result:     "LOOSE",
+	}
+	successEndServer := makeServer(successEnd, http.StatusCreated)
 
 	type args struct {
 		host   string
@@ -68,13 +83,23 @@ func Test_sendGuessRequest(t *testing.T) {
 		wantErr assert.ErrorAssertionFunc
 	}{
 		{
-			name: "success but not end",
+			name: "success not end",
 			args: args{
-				host:   server.URL,
+				host:   successNotEndServer.URL,
 				number: number,
 			},
-			want:    want,
+			want:    successNotEnd,
 			want1:   nil,
+			wantErr: assert.NoError,
+		},
+		{
+			name: "success end",
+			args: args{
+				host:   successEndServer.URL,
+				number: number,
+			},
+			want:    nil,
+			want1:   successEnd,
 			wantErr: assert.NoError,
 		},
 	}
